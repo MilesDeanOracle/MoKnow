@@ -21,10 +21,9 @@ export function EditorWorkspace({ file, markdownService, onDirtyChange }: Editor
   useEffect(() => {
     setContent(file.raw);
     onDirtyChange(false, file.raw);
-  }, [file, onDirtyChange]);
+  }, [file.id, file.raw]);
 
   const rendered = useMemo(() => markdownService.render(content), [content, markdownService]);
-  const highlighted = useMemo(() => markdownService.highlightSource(content), [content, markdownService]);
   const lines = useMemo(() => content.split("\n"), [content]);
 
   const updateContent = (nextContent: string) => {
@@ -77,25 +76,23 @@ export function EditorWorkspace({ file, markdownService, onDirtyChange }: Editor
               <span key={`line-${index + 1}`} className={index === 11 ? "active" : ""}>{index + 1}</span>
             ))}
           </div>
-          <div
-            className="code-content"
-            contentEditable
-            suppressContentEditableWarning
+          <textarea
+            aria-label="Markdown 源码编辑器"
+            className="code-content code-textarea"
             spellCheck={false}
-            dangerouslySetInnerHTML={{ __html: highlighted }}
-            onInput={(event) => updateContent(event.currentTarget.innerText)}
+            value={content}
+            onChange={(event) => updateContent(event.target.value)}
           />
         </div>
 
         <div className={`split-editor ${mode !== "split" ? "hidden" : ""}`} id="editorSplit" data-testid="editor-split" hidden={mode !== "split"}>
           <div className="split-left">
-            <div
-              className="code-content"
-              contentEditable
-              suppressContentEditableWarning
+            <textarea
+              aria-label="Markdown 双视图源码编辑器"
+              className="code-content code-textarea split-textarea"
               spellCheck={false}
-              dangerouslySetInnerHTML={{ __html: highlighted }}
-              onInput={(event) => updateContent(event.currentTarget.innerText)}
+              value={content}
+              onChange={(event) => updateContent(event.target.value)}
             />
           </div>
           <div className="split-right">

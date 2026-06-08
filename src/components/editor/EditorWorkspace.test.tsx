@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { EditorWorkspace } from "./EditorWorkspace";
 import { MarkdownService } from "../../services/markdownService";
 import type { MarkdownFile } from "../../types/models";
@@ -24,5 +24,18 @@ describe("EditorWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "所见即所得" }));
     expect(screen.getByTestId("editor-wysiwyg")).toBeVisible();
+  });
+
+  it("edits markdown through a stable textarea and keeps the preview in sync", () => {
+    const onDirtyChange = vi.fn();
+    render(<EditorWorkspace file={file} markdownService={new MarkdownService()} onDirtyChange={onDirtyChange} />);
+
+    const editor = screen.getByLabelText("Markdown 源码编辑器");
+    fireEvent.change(editor, { target: { value: `${file.raw}\n\n新增内容` } });
+
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true, `${file.raw}\n\n新增内容`);
+
+    fireEvent.click(screen.getByRole("button", { name: "双视图" }));
+    expect(within(screen.getByTestId("editor-split")).getByText("新增内容")).toBeInTheDocument();
   });
 });

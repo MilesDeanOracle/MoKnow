@@ -260,6 +260,25 @@ button {
   font-size: 11px;
 }
 
+.recent-repo-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 150px;
+}
+
+.recent-repo-name {
+  overflow: hidden;
+  max-width: 180px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-repo-missing {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 .sidebar-search {
   display: flex;
   align-items: center;
@@ -321,12 +340,36 @@ button {
   text-transform: uppercase;
 }
 
+.tree-category {
+  padding-bottom: 3px;
+}
+
+.tree-category-title,
+.tree-category-icon,
+.footer-action {
+  display: inline-flex;
+  align-items: center;
+}
+
+.tree-category-title {
+  gap: 6px;
+  min-width: 0;
+}
+
+.tree-category-icon {
+  color: var(--accent);
+}
+
 .add-btn {
-  padding: 0 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
   border-radius: 2px;
   color: var(--text-muted);
   background: transparent;
-  font-size: 13px;
 }
 
 .add-btn:hover {
@@ -370,10 +413,12 @@ button {
 }
 
 .ti-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   width: 16px;
-  font-size: 12px;
-  text-align: center;
+  color: var(--text-muted);
 }
 
 .ti-toggle {
@@ -406,6 +451,11 @@ button {
   font-size: 10px;
 }
 
+.ti-favorite {
+  flex-shrink: 0;
+  color: var(--yellow);
+}
+
 .sidebar-footer {
   display: flex;
   gap: 2px;
@@ -414,6 +464,8 @@ button {
 }
 
 .footer-action {
+  justify-content: center;
+  gap: 5px;
   width: 100%;
   color: var(--text-muted);
   font-size: 11px;
@@ -425,6 +477,17 @@ button {
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
+}
+
+.empty-editor {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  background: var(--bg-base);
+  font-size: 13px;
 }
 
 .editor-toolbar {
@@ -590,6 +653,19 @@ button {
   word-break: break-word;
 }
 
+.code-textarea {
+  display: block;
+  width: 100%;
+  min-height: 100%;
+  border: 0;
+  resize: none;
+  background: transparent;
+}
+
+.code-textarea:focus {
+  outline: none;
+}
+
 .split-editor {
   display: flex;
   flex: 1;
@@ -601,6 +677,10 @@ button {
 
 .split-left .code-content {
   padding-left: 20px;
+}
+
+.split-textarea {
+  height: 100%;
 }
 
 .split-right {

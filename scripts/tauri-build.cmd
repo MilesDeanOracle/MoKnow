@@ -16,4 +16,5 @@ if "%VSINSTALL%"=="" (
 
 call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
 set "PATH=%USERPROFILE%\.cargo\bin;%PATH%"
+if exist "C:\Strawberry\perl\bin\perl.exe" set "PATH=C:\Strawberry\perl\bin;C:\Strawberry\c\bin;%PATH%"
 npm run tauri:build
