@@ -1,6 +1,8 @@
 import { theme as antdTheme } from "antd";
 import type { ThemeConfig as AntdThemeConfig } from "antd";
-import type { AppThemeConfig, ThemeBuildResult, ThemeName } from "../types/models";
+import type { AppThemeConfig, PluginThemeContribution, ThemeBuildResult, ThemeName, ThemePreference, UserSettings } from "../types/models";
+
+export type RuntimePluginTheme = PluginThemeContribution & { key: string; pluginId: string; pluginName: string };
 
 const themePresets: Record<ThemeName, AppThemeConfig> = {
   day: {
@@ -27,6 +29,58 @@ const themePresets: Record<ThemeName, AppThemeConfig> = {
 export class ThemeService {
   getPreset(name: ThemeName): AppThemeConfig {
     return themePresets[name];
+  }
+
+  resolvePreference(
+    settings: UserSettings,
+    systemPrefersDark = true,
+    pluginThemes: RuntimePluginTheme[] = [],
+  ): { name: ThemeName; config: AppThemeConfig } {
+    if (settings.themePreference.startsWith("plugin:")) {
+      const themeKey = settings.themePreference.slice("plugin:".length);
+      const pluginTheme = pluginThemes.find((theme) => theme.key === themeKey);
+      if (pluginTheme) {
+        const fallback = this.getPreset("night");
+        const mode = pluginTheme.theme?.mode === "system"
+          ? systemPrefersDark ? "dark" : "light"
+          : pluginTheme.theme?.mode ?? fallback.mode;
+        const config = {
+          ...fallback,
+          ...pluginTheme.theme,
+          mode,
+          primaryColor: pluginTheme.theme?.primaryColor || fallback.primaryColor,
+          borderRadius: Number.isFinite(pluginTheme.theme?.borderRadius) ? pluginTheme.theme?.borderRadius ?? fallback.borderRadius : fallback.borderRadius,
+          fontSize: Number.isFinite(pluginTheme.theme?.fontSize) ? pluginTheme.theme?.fontSize ?? fallback.fontSize : fallback.fontSize,
+          compact: Boolean(pluginTheme.theme?.compact),
+        };
+        return { name: mode === "light" ? "day" : "night", config };
+      }
+    }
+
+    if (settings.themePreference === "custom") {
+      const mode = settings.customTheme.mode === "system"
+        ? systemPrefersDark ? "dark" : "light"
+        : settings.customTheme.mode;
+      return {
+        name: mode === "light" ? "day" : "night",
+        config: { ...settings.customTheme, mode },
+      };
+    }
+
+    if (settings.themePreference === "system") {
+      const name: ThemeName = systemPrefersDark ? "night" : "day";
+      return { name, config: this.getPreset(name) };
+    }
+
+    if (settings.themePreference === "day" || settings.themePreference === "night") {
+      return { name: settings.themePreference, config: this.getPreset(settings.themePreference) };
+    }
+
+    return { name: "night", config: this.getPreset("night") };
+  }
+
+  nextPreference(preference: ThemePreference): ThemePreference {
+    return preference === "night" ? "day" : "night";
   }
 
   createAntdTheme(config: AppThemeConfig): AntdThemeConfig {

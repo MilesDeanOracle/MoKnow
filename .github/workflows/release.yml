@@ -1,0 +1,254 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macOS
+            os: macos-latest
+          - platform: Windows
+            os: windows-latest
+          - platform: Linux
+            os: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run frontend tests
+        run: npm run test
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Generate AI provider E2E evidence
+        env:
+          AI_E2E_ENDPOINT: ${{ secrets.AI_E2E_ENDPOINT }}
+          AI_E2E_MODEL: ${{ secrets.AI_E2E_MODEL }}
+          AI_E2E_API_KEY: ${{ secrets.AI_E2E_API_KEY }}
+          AI_E2E_PROVIDER_LABEL: ${{ secrets.AI_E2E_PROVIDER_LABEL }}
+        run: npm run ai:e2e:auto -- --write-doc
+
+      - name: Prepare updater config
+        env:
+          MOKNOW_UPDATER_PUBKEY: ${{ secrets.MOKNOW_UPDATER_PUBKEY }}
+          MOKNOW_UPDATER_ENDPOINT: ${{ secrets.MOKNOW_UPDATER_ENDPOINT }}
+          MOKNOW_RELEASE_DOWNLOAD_BASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
+        run: npm run release:updater-config
+
+      - name: Build and upload Tauri bundle
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_PROVIDER_SHORT_NAME: ${{ secrets.APPLE_PROVIDER_SHORT_NAME }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: MoKnow ${{ github.ref_name }}
+          releaseBody: See CHANGELOG.md for details.
+          releaseDraft: true
+          prerelease: false
+          args: --config src-tauri/tauri.updater.conf.json
+
+      - name: Validate local release artifacts
+        run: npm run release:artifacts -- --require-updater-signatures
+
+      - name: Validate install smoke entry points
+        run: npm run release:install-smoke
+
+      - name: Validate signing and notarization
+        run: npm run release:signing -- --require-signed --require-notarized
+
+      - name: Generate release metadata
+        env:
+          MOKNOW_RELEASE_DOWNLOAD_BASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
+          MOKNOW_HOMEPAGE_URL: https://github.com/${{ github.repository }}
+        run: npm run release:metadata -- --require-base-url --require-updater-signatures
+
+      - name: Verify distribution metadata
+        env:
+          MOKNOW_RELEASE_DOWNLOAD_BASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
+          MOKNOW_HOMEPAGE_URL: https://github.com/${{ github.repository }}
+          MOKNOW_UPDATER_ENDPOINT: https://github.com/${{ github.repository }}/releases/latest/download/latest.json
+          MOKNOW_HOMEBREW_TAP: ${{ secrets.MOKNOW_HOMEBREW_TAP }}
+        run: npm run release:distribution -- --strict
+
+      - name: Generate final progress audit
+        run: npm run release:final-audit
+
+      - name: Upload release artifacts for verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: moknow-${{ matrix.platform }}-${{ github.ref_name }}
+          if-no-files-found: error
+          path: |
+            src-tauri/target/release/bundle/**/*.AppImage
+            src-tauri/target/release/bundle/**/*.deb
+            src-tauri/target/release/bundle/**/*.dmg
+            src-tauri/target/release/bundle/**/*.exe
+            src-tauri/target/release/bundle/**/*.msi
+            src-tauri/target/release/bundle/**/*.rpm
+            src-tauri/target/release/bundle/**/*.sig
+            src-tauri/target/release/bundle/**/*.tar.gz
+            release/**/*.json
+            release/**/*.md
+            release/homebrew/*.rb
+
+      - name: Upload release metadata to draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            release/downloads.json \
+            release/latest.json \
+            --clobber
+
+      - name: Upload Homebrew cask to draft release
+        if: runner.os == 'macOS'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" release/homebrew/*.rb --clobber
+
+  verify:
+    name: Verify release artifacts
+    needs: build
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate release workflow structure
+        run: npm run release:workflow-validate -- --write-doc
+
+      - name: Generate AI provider E2E evidence
+        env:
+          AI_E2E_ENDPOINT: ${{ secrets.AI_E2E_ENDPOINT }}
+          AI_E2E_MODEL: ${{ secrets.AI_E2E_MODEL }}
+          AI_E2E_API_KEY: ${{ secrets.AI_E2E_API_KEY }}
+          AI_E2E_PROVIDER_LABEL: ${{ secrets.AI_E2E_PROVIDER_LABEL }}
+        run: npm run ai:e2e:auto -- --write-doc
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: moknow-*-${{ github.ref_name }}
+          path: release/downloaded-artifacts
+
+      - name: Verify downloaded release artifacts
+        run: npm run release:downloads -- --artifact-root release/downloaded-artifacts --platform all --source "GitHub Actions Release ${{ github.ref_name }}" --require-metadata --require-updater-signatures
+
+      - name: Verify distribution metadata
+        env:
+          MOKNOW_RELEASE_DOWNLOAD_BASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
+          MOKNOW_HOMEPAGE_URL: https://github.com/${{ github.repository }}
+          MOKNOW_UPDATER_ENDPOINT: https://github.com/${{ github.repository }}/releases/latest/download/latest.json
+          MOKNOW_HOMEBREW_TAP: ${{ secrets.MOKNOW_HOMEBREW_TAP }}
+        run: npm run release:distribution -- --strict
+
+      - name: Aggregate platform evidence
+        run: npm run release:aggregate-evidence -- --artifact-root release/downloaded-artifacts
+
+      - name: Generate aggregate final progress audit
+        run: npm run release:final-audit
+
+      - name: Upload aggregate verification reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: moknow-release-verification-${{ github.ref_name }}
+          if-no-files-found: error
+          path: |
+            release/download-verification.json
+            release/download-verification.md
+            release/distribution-verification.json
+            release/distribution-verification.md
+            release/aggregate-evidence.json
+            release/aggregate-evidence.md
+            release/install-smoke.json
+            release/install-smoke.md
+            release/signing-verification.json
+            release/signing-verification.md
+            release/workflow-validation.json
+            release/workflow-validation.md
+            release/final-progress-audit.json
+            release/final-progress-audit.md
+
+      - name: Upload aggregate verification reports to draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            release/download-verification.json \
+            release/download-verification.md \
+            release/distribution-verification.json \
+            release/distribution-verification.md \
+            release/aggregate-evidence.json \
+            release/aggregate-evidence.md \
+            release/install-smoke.json \
+            release/install-smoke.md \
+            release/signing-verification.json \
+            release/signing-verification.md \
+            release/workflow-validation.json \
+            release/workflow-validation.md \
+            release/final-progress-audit.json \
+            release/final-progress-audit.md \
+            --clobber

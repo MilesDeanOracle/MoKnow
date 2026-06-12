@@ -32,6 +32,9 @@ export function CreateRepositoryModal({ open: visible, loading, onCancel, onSubm
       confirmLoading={loading}
       okText="创建"
       cancelText="取消"
+      destroyOnHidden
+      maskTransitionName=""
+      transitionName=""
       onCancel={onCancel}
       onOk={() => onSubmit(name.trim(), basePath.trim())}
     >

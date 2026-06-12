@@ -1,0 +1,174 @@
+name: Release Dry Run
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/release-dry-run.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "src/**"
+      - "src-tauri/**"
+      - "scripts/**"
+      - "vite.config.ts"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-dry-run-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Dry run ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macOS
+            os: macos-latest
+          - platform: Windows
+            os: windows-latest
+          - platform: Linux
+            os: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run frontend tests
+        run: npm run test
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Generate AI provider E2E evidence
+        env:
+          AI_E2E_ENDPOINT: ${{ secrets.AI_E2E_ENDPOINT }}
+          AI_E2E_MODEL: ${{ secrets.AI_E2E_MODEL }}
+          AI_E2E_API_KEY: ${{ secrets.AI_E2E_API_KEY }}
+          AI_E2E_PROVIDER_LABEL: ${{ secrets.AI_E2E_PROVIDER_LABEL }}
+        run: npm run ai:e2e:auto -- --write-doc
+
+      - name: Build Tauri bundle
+        uses: tauri-apps/tauri-action@v0
+
+      - name: Validate local release artifacts
+        run: npm run release:artifacts
+
+      - name: Generate install smoke report
+        run: npm run release:install-smoke
+
+      - name: Generate signing verification report
+        run: npm run release:signing
+
+      - name: Generate final progress audit
+        run: npm run release:final-audit
+
+      - name: Upload dry-run artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: moknow-dry-run-${{ matrix.platform }}-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            src-tauri/target/release/bundle/**/*.AppImage
+            src-tauri/target/release/bundle/**/*.deb
+            src-tauri/target/release/bundle/**/*.dmg
+            src-tauri/target/release/bundle/**/*.exe
+            src-tauri/target/release/bundle/**/*.msi
+            src-tauri/target/release/bundle/**/*.rpm
+            release/**/*.json
+            release/**/*.md
+
+  verify:
+    name: Verify dry-run artifacts
+    needs: build
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate release workflow structure
+        run: npm run release:workflow-validate -- --write-doc
+
+      - name: Generate AI provider E2E evidence
+        env:
+          AI_E2E_ENDPOINT: ${{ secrets.AI_E2E_ENDPOINT }}
+          AI_E2E_MODEL: ${{ secrets.AI_E2E_MODEL }}
+          AI_E2E_API_KEY: ${{ secrets.AI_E2E_API_KEY }}
+          AI_E2E_PROVIDER_LABEL: ${{ secrets.AI_E2E_PROVIDER_LABEL }}
+        run: npm run ai:e2e:auto -- --write-doc
+
+      - name: Download dry-run artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: moknow-dry-run-*-${{ github.sha }}
+          path: release/downloaded-artifacts
+
+      - name: Verify downloaded dry-run artifacts
+        run: npm run release:downloads -- --artifact-root release/downloaded-artifacts --platform all --source "GitHub Actions Release Dry Run ${{ github.run_id }}"
+
+      - name: Verify distribution metadata
+        run: npm run release:distribution
+
+      - name: Aggregate platform evidence
+        run: npm run release:aggregate-evidence -- --artifact-root release/downloaded-artifacts
+
+      - name: Generate aggregate final progress audit
+        run: npm run release:final-audit
+
+      - name: Upload aggregate verification reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: moknow-dry-run-verification-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            release/download-verification.json
+            release/download-verification.md
+            release/distribution-verification.json
+            release/distribution-verification.md
+            release/aggregate-evidence.json
+            release/aggregate-evidence.md
+            release/install-smoke.json
+            release/install-smoke.md
+            release/signing-verification.json
+            release/signing-verification.md
+            release/workflow-validation.json
+            release/workflow-validation.md
+            release/final-progress-audit.json
+            release/final-progress-audit.md

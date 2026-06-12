@@ -41,4 +41,34 @@ describe("ThemeService", () => {
     expect(night.cssVars["--bg-base"]).toBe("#0f1117");
     expect(night.cssVars["--text-primary"]).toBe("#e8eaf0");
   });
+
+  it("resolves enabled plugin themes from user settings", () => {
+    const service = new ThemeService();
+
+    const resolved = service.resolvePreference({
+      themePreference: "plugin:moknow.theme-pack:mint",
+      customTheme: service.getPreset("night"),
+      customCss: "",
+    }, true, [
+      {
+        id: "mint",
+        key: "moknow.theme-pack:mint",
+        title: "薄荷主题",
+        pluginId: "moknow.theme-pack",
+        pluginName: "主题包",
+        theme: {
+          mode: "light",
+          primaryColor: "#20b486",
+          compact: true,
+          borderRadius: 8,
+          fontSize: 14,
+        },
+      },
+    ]);
+    const theme = service.build(resolved.config);
+
+    expect(resolved.name).toBe("day");
+    expect(theme.antdTheme.token?.colorPrimary).toBe("#20b486");
+    expect(theme.cssVars["--accent"]).toBe("#20b486");
+  });
 });

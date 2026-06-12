@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"允许 MoKnow 主窗口访问基础 Tauri 能力和系统目录选择框。","local":true,"windows":["*"],"permissions":["core:default","dialog:default","dialog:allow-open"]}}
+{"default":{"identifier":"default","description":"允许 MoKnow 主窗口访问基础 Tauri 能力和系统目录选择框。","local":true,"windows":["*"],"permissions":["core:default","dialog:default","dialog:allow-open"]},"desktop-capability":{"identifier":"desktop-capability","description":"","local":true,"windows":["main"],"permissions":["updater:default"],"platforms":["macOS","windows","linux"]}}
